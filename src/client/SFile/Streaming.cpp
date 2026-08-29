@@ -184,20 +184,39 @@ namespace
 
     wld::AsyncFileReadWaitFn g_origAsyncFileReadWait = nullptr;
 
+    /**
+     * @brief Recovers kWaitGuard from a native early-return path that leaks it.
+     *
+     * AsyncFileReadWait asserts kWaitGuard is 0 on entry (fatal app-terminate otherwise), increments
+     * it, then decrements it once before every NORMAL return. One path skips that decrement: if the
+     * target object is already marked handled by the time the critical section is taken, the
+     * function releases the lock and returns immediately, never reaching the decrement at the
+     * bottom. That leaves the guard permanently incremented -- the very next call to this function
+     * from ANYWHERE in the client (it has dozens of call sites) hits the entry assert and
+     * fatal-terminates the process. Confirmed via direct disassembly of the native function; no
+     * caller-side argument avoids this, the early-return is unconditional once that flag is set.
+     * Rare under light/occasional calling, much easier to hit for any caller invoking this function
+     * at high frequency (found via the existing diagnostic logging below, once one such caller
+     * started doing exactly that).
+     *
+     * Fix: read the guard's own value immediately before and after the real call. A leak shows up
+     * as an exact +1 net change (the increment ran, the matching decrement didn't) -- restore it to
+     * whatever it was before this call, nothing more. Keying off the counter's own observed delta,
+     * rather than trying to predict the leak from the object's state beforehand, means this can
+     * never remove more than what THIS call itself left behind, regardless of what any other caller
+     * or thread does to the same guard concurrently.
+     */
     void __cdecl hkAsyncFileReadWait(void* obj)
     {
-        if (obj)
-        {
-            const uint32_t waiting = adrain::Rd(adrain::kWaitGuard);
-            const uint8_t  handled = adrain::RdB(reinterpret_cast<uint32_t>(obj) + 0x21);
-            if (waiting != 0)
-                WLOG_ERROR("async-wait-diag: about to fatal-assert -- s_waiting=%u obj=%p caller=%p",
-                           waiting, obj, _ReturnAddress());
-            else if (handled != 0)
-                WLOG_WARN("async-wait-diag: LEAK -- obj=%p already handled (+0x21=1), caller=%p takes the "
-                          "no-decrement early return", obj, _ReturnAddress());
-        }
+        const uint32_t before = adrain::Rd(adrain::kWaitGuard);
         g_origAsyncFileReadWait(obj);
+        const uint32_t after = adrain::Rd(adrain::kWaitGuard);
+        if (after == before + 1)
+        {
+            adrain::Wr(adrain::kWaitGuard, before);
+            WLOG_WARN("AsyncFileReadWait: recovered a leaked reentrancy guard (obj=%p, caller=%p) -- "
+                      "native early-return path skipped its own decrement", obj, _ReturnAddress());
+        }
     }
 
     /**
@@ -207,7 +226,7 @@ namespace
     {
         wxl::hook::Install("AsyncDrain", wld::kAsyncServiceQueues,
                            &hkAsyncDrain, &g_origAsyncDrain);
-        wxl::hook::Install("AsyncFileReadWaitDiag", wld::kAsyncFileReadWait,
+        wxl::hook::Install("AsyncFileReadWaitGuard", wld::kAsyncFileReadWait,
                            &hkAsyncFileReadWait, &g_origAsyncFileReadWait);
         return true;
     }
