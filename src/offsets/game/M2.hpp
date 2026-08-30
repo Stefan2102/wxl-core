@@ -2193,8 +2193,13 @@ namespace wxl::offsets::game::m2
     /// skin->vertexLookup[v] into slot v, then rewrites kOffVertexBoneSlots alone from
     /// skin->bones[v * 4], adding section->boneCount * coInstance to each of the four bytes as one
     /// dword add. Position and weights therefore reach the GPU exactly as the record carries them.
-    /// With shaders off it packs a narrower vertex instead and deposits no bone slots at all, the
-    /// stack argument choosing which texture-coordinate pair leads.
+    /// With shaders off it packs a narrower vertex instead and deposits no bone slots at all, and
+    /// fills a single block rather than one per co-instance.
+    ///
+    /// Which of the two runs is decided by the global shader-enable flag, NOT by the stack argument:
+    /// that argument selects a texture-coordinate pair for the narrow path only, and the wide path
+    /// overwrites it outright and uses it as its own loop cursor. Either path walks a submesh's own
+    /// range, [vertexStart, vertexStart + vertexCount), rather than the skin's vertices flat.
     constexpr uintptr_t kSharedSetVertices                 = 0x008362B0;
     using M2_SharedSetVerticesFn = uint32_t(__fastcall*)(void* shared, void* edx, int texCoordSet);
     /// The vertex GxBuf the fill writes into, and the pool backing it. Both null until the first call
