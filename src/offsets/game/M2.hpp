@@ -1904,8 +1904,46 @@ namespace wxl::offsets::game::m2
     /// It reads the block's start as a PLAIN 16-BIT FIELD (`movzx ecx, word ptr [esi+8]`, at both the
     /// memcpy and the CPU-rebase site). A skin whose sections carry the extended (level << 16)
     /// start therefore has every block past 65535 sourced from the wrong place, which draws as
-    /// triangles joining unrelated vertices. The draw call learned that encoding; this did not.
+    /// triangles joining unrelated vertices. client/CM2Shared/WideIndices.cpp detours it and refills
+    /// the buffer from the widened start, for the sections whose widened start the skin can contain.
     using M2_SetModelIndicesFn = uint32_t(__fastcall*)(void* instance, void* edx);
+    /// The two byte-verified read sites, one complete `movzx r32, word ptr [esi+8]` each (4 bytes) --
+    /// too short to redirect in place, which is why the fold is done by detouring the whole fill.
+    constexpr uintptr_t kSetModelIndicesSrcCopy   = 0x00829091;
+    constexpr uintptr_t kSetModelIndicesSrcRebase = 0x008290BC;
+
+    /// The shared-model sibling of kSetModelIndices: fills ONE index buffer per shared model, all
+    /// submeshes in skin order, each repeated kOffSharedInstanceCopies times for the batched-doodad
+    /// draw, then writes each submesh copy's own indexStart back as its offset in that buffer.
+    /// Unlike kSetModelIndices it also CREATES the pool/buffer pair on first use.
+    ///
+    /// Same plain 16-bit source read (`movzx ebx, word ptr [ebx+ecx+8]` at kSharedSetIndicesSrc), so
+    /// it carries the identical ceiling. thiscall (ECX = shared model), no stack args -> bool.
+    ///
+    /// This is also the place a 32-bit or re-split index scheme has to be installed: it owns the
+    /// index-buffer upload for a shared model outright.
+    constexpr uintptr_t kSharedSetIndices    = 0x008360A0;
+    constexpr uintptr_t kSharedSetIndicesSrc = 0x0083619F;
+    using M2_SharedSetIndicesFn = uint32_t(__fastcall*)(void* model, void* edx);
+    constexpr size_t kOffSharedIndexPool     = 0x178; ///< -> GxPool backing the shared index buffer
+    constexpr size_t kOffSharedIndexBuf      = 0x17C; ///< -> the shared index GxBuf (built/valid at +0x1C/+0x1D)
+    /// uint32: how many copies of the model one shared index buffer holds, for the batched-doodad
+    /// draw. Read as the pool-size multiplier (`imul eax, [esi+0x190]`) and as the inner repeat count
+    /// of the fill. Distinct from kOffSharedMaxInstances (0x194), which is the CEILING finalize
+    /// computed; this is the count in force.
+    constexpr size_t kOffSharedInstanceCopies = 0x190;
+    /// -> the shared file record, whose flags dword at kOffM2FileFlags picks how both fills spell an
+    /// index: bit 0x8, or bit 0x40 on a model with exactly one bone, means the skin's indices are
+    /// copied as they stand; otherwise each submesh is rebased onto its own vertex window.
+    constexpr size_t   kOffSharedFileRecord   = 0x04;
+    constexpr size_t   kOffM2FileFlags        = 0x04;
+    constexpr uint32_t kM2FileFlagGlobalIndices = 0x8;
+    constexpr uint32_t kM2FileFlagSingleBoneGlobal = 0x40;
+    /// The three sites where kDrawTriangleBatch turns the submesh it is about to draw into the draw
+    /// call's StartIndex -- `movzx r32, word ptr [esi+8]` again, feeding a 32-bit field. This is the
+    /// last 16-bit link in the index path: the fill sites above decide WHICH triangles land in the
+    /// buffer, these decide where the draw starts reading it.
+    constexpr uintptr_t kDrawBatchStartIndexSites[] = { 0x008205DD, 0x00820666, 0x008206DE };
     /// Per-instance geometry context: the compacted draw list plus the buffers it feeds.
     constexpr size_t kOffInstGeometryCtx  = 0x2D0;
     constexpr size_t kOffGeoCtxGroups     = 0x08; ///< -> group records, stride kGeoCtxGroupStride
@@ -2147,9 +2185,6 @@ namespace wxl::offsets::game::m2
     /// Insert an extension continuation into the load-completion chain of a shared model without
     /// polling. __thiscall, 1 stack arg.
     constexpr uintptr_t kSharedCallbackWhenLoaded          = 0x008359C0;
-    /// Own the index-buffer upload for a shared model, the place a 32-bit or re-split index scheme has
-    /// to be installed. __thiscall, caller-cleaned.
-    constexpr uintptr_t kSharedSetIndices                  = 0x008360A0;
     /// Own the vertex-buffer upload for a shared model, including its vertex format choice, before any
     /// instance draws. __thiscall, 1 stack arg.
     ///

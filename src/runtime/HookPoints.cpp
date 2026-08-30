@@ -600,6 +600,7 @@ namespace wxl::runtime::hookpoints
             { "M2.CountGeometryBatches",                   m2::kCountGeometryBatches },
             { "M2.FindTrackKey",                           m2::kFindTrackKey },
             { "M2.SetModelIndices",                        m2::kSetModelIndices },
+            { "M2.SharedSetIndices",                       m2::kSharedSetIndices },
             { "M2.SetModelVertices",                       m2::kSetModelVertices },
             { "M2.GetRegionBounds",                        m2::kGetRegionBounds },
             { "M2.RenderBatchListShadowMap",               m2::kRenderBatchListShadowMap },
