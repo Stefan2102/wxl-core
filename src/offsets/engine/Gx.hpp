@@ -196,6 +196,12 @@ namespace wxl::offsets::engine::gx
     constexpr size_t kGxBatchIndexCount = 0x08; // uint32
     constexpr size_t kGxBatchMinIndex   = 0x0C; // uint16
     constexpr size_t kGxBatchMaxIndex   = 0x0E; // uint16
+    constexpr size_t kGxDeviceVertexStream = 0x2870; // -> the bound vertex stream buffer
+    constexpr size_t kGxBufStreamOffset    = 0x18;   // uint32, in bytes
+    constexpr size_t kGxBufStreamStride    = 0x0C;   // uint32
+    /// Non-zero selects a path that passes a base vertex of zero instead of deriving one, so the
+    /// stored offset is ignored there. Anything relying on that derivation has to check this first.
+    constexpr size_t kGxDeviceBaseVertexMode = 0x224;
 
     // --- typed views over the device objects ---
     // The constants above are the curated landmarks; these structs give named, typed access to the same
