@@ -505,6 +505,7 @@ namespace wxl::runtime::hookpoints
             { "M2.SortOpaqueGeoBatches",                   m2::kSortOpaqueGeoBatches },
             { "M2.DrawBatch",                              gxoff::kDrawTriangleBatch },
             { "M2.DrawBatchDoodad",                        gxoff::kDrawBatchDoodad },
+            { "Gx.DeviceDraw",                             gxoff::kGxDeviceDraw },
             { "M2.ProjectedDecalDraw",                     m2::kProjectedDecalDraw },
             { "M2.ShadowMapBatches",                       m2::kShadowMapBatches },
             { "M2.RenderBatchShadowMap",                   m2::kRenderBatchShadowMap },

@@ -181,6 +181,22 @@ namespace wxl::offsets::engine::gx
     // element in the run has it unset, which is exactly why the restore is mandatory, not optional.
     constexpr size_t    kM2ElementRunLengthField = 0x1C;
 
+    // The device-level draw every batch funnels through, one step below the vtable slot an extension
+    // may own: __thiscall(this, batch, indexed), ret 8. It reads the CGxBatch the M2 draw built and
+    // calls the indexed or non-indexed vtable entry.
+    //
+    // Worth owning rather than the vtable slot when what has to change is a value the batch carries:
+    // CGxBatch::startIndex is 32 bits here, while the M2 draw that filled it read the submesh's start
+    // through a 16-bit field. This is the first place on the path where the full value fits.
+    constexpr uintptr_t kGxDeviceDraw = 0x006A3620;
+    using GxDeviceDrawFn = void(__fastcall*)(void* device, void* edx, uint32_t* batch, int indexed);
+    /// The draw descriptor the entry above consumes: 0x10 bytes, built on the M2 draw's own stack.
+    constexpr size_t kGxBatchPrimType   = 0x00; // uint32
+    constexpr size_t kGxBatchStartIndex = 0x04; // uint32 -- the one wide field on the path
+    constexpr size_t kGxBatchIndexCount = 0x08; // uint32
+    constexpr size_t kGxBatchMinIndex   = 0x0C; // uint16
+    constexpr size_t kGxBatchMaxIndex   = 0x0E; // uint16
+
     // --- typed views over the device objects ---
     // The constants above are the curated landmarks; these structs give named, typed access to the same
     // fields, with every member offset checked against a constant at compile time. Only confirmed fields
