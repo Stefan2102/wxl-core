@@ -113,6 +113,16 @@ namespace
         if (!EnsureReady(dev)) return;
         if (!g_open) return;
 
+        // With the client's software cursor, the cursor is part of the game's own UI, which doesn't
+        // get the mouse messages the overlay takes -- so the cursor can vanish over a panel. Draw
+        // ImGui's own cursor there, i.e. while the overlay has the mouse (last frame's verdict) and
+        // the system isn't showing one; elsewhere the game's cursor is the only one.
+        CURSORINFO cursor{};
+        cursor.cbSize = sizeof(cursor);
+        const bool systemCursor = GetCursorInfo(&cursor) && (cursor.flags & CURSOR_SHOWING) && cursor.hCursor;
+        ImGuiIO& io = ImGui::GetIO();
+        io.MouseDrawCursor = !systemCursor && io.WantCaptureMouse;
+
         ImGui_ImplDX9_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
