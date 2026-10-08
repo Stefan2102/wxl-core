@@ -39,13 +39,23 @@ namespace wxl::game::doodad
     {
         /**
          * @brief Reports coarse user-space pointer sanity for a 32-bit fixed-base image.
+         *
+         * The upper bound is the process's own user-space limit, not 2 GB: a large-address-aware client
+         * places heap blocks above 0x80000000 once its memory use grows (e.g. after loading another
+         * zone), and a fixed 2 GB cap would reject every one of them.
          * @param p  Pointer to test.
          * @return True when the address falls in the plausible user range.
          */
         inline bool Plausible(const void* p)
         {
+            static const uintptr_t kUserMax = []
+            {
+                SYSTEM_INFO si;
+                GetSystemInfo(&si);
+                return reinterpret_cast<uintptr_t>(si.lpMaximumApplicationAddress);
+            }();
             const uintptr_t a = reinterpret_cast<uintptr_t>(p);
-            return a > 0x10000 && a < 0x7FFF0000;
+            return a > 0x10000 && a < kUserMax;
         }
 
         /**
