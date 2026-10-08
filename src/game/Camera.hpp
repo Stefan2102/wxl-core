@@ -78,6 +78,36 @@ namespace wxl::game::camera
             : 1.2217f; // ~70 degrees; fallback for the no-camera case
     }
 
+    /// Managed coordinate slot indices confirmed in use (see offsets/engine/Camera.hpp for detail).
+    constexpr uint32_t kCoordPosition = 7;
+    constexpr uint32_t kCoordTarget   = 8;
+
+    /**
+     * @brief Reads a camera's managed coordinate slot (position or target).
+     * @param camera  an object from GetActiveCamera(), possibly null.
+     * @param index   kCoordPosition or kCoordTarget.
+     * @param out     receives x,y,z; left untouched if the slot isn't readable as a vector coord.
+     */
+    inline void GetCoord(void* camera, uint32_t index, float out[3])
+    {
+        if (!camera) return;
+        Native<off::CameraGetCoordFn>(off::kCameraGetCoord)(camera, index, out);
+    }
+
+    /**
+     * @brief Writes a camera's managed coordinate slot directly, bypassing any spline/callback.
+     * @param camera  an object from GetActiveCamera(), possibly null.
+     * @param index   kCoordPosition or kCoordTarget.
+     * @param vec     the new x,y,z.
+     * @return nothing indicates success; only a readback shows whether the write stuck (see
+     *         offsets/engine/Camera.hpp -- the slot has to already be in "manual/settable" mode).
+     */
+    inline void SetCoord(void* camera, uint32_t index, const float vec[3])
+    {
+        if (!camera) return;
+        Native<off::CameraSetCoordFn>(off::kCameraSetCoord)(camera, index, vec, 0);
+    }
+
     // The setters below drive the world renderer from a camera the engine does not own. In-world the
     // engine rewrites all four every frame from its own camera, so writing them there is overwritten
     // immediately; they are the way to aim the scene on the glue screens, where the engine leaves them
