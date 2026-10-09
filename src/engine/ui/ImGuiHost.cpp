@@ -66,6 +66,7 @@ namespace
     bool  g_failed  = false;   // initialisation failed once; do not retry every frame
     bool  g_open    = false;   // overlay visible and taking input
     HWND  g_hwnd    = nullptr;
+    IDirect3DDevice9* g_device = nullptr; // the device the DX9 backend was initialised on
 
     /// The toggle. Chosen because the client binds neither, and because a key that needs a modifier
     /// is unreachable once the overlay is swallowing modifiers.
@@ -80,7 +81,33 @@ namespace
 
     bool EnsureReady(IDirect3DDevice9* dev)
     {
-        if (g_ready) return true;
+        if (g_ready && dev == g_device) return true;
+        if (g_ready)
+        {
+            // A graphics restart (changing multisampling, for one) builds a new device without the
+            // lost/reset events, so the backend would keep drawing through the old one. Move it.
+            if (!dev) return false;
+            // The new device can come with a new window, which the Win32 backend has to follow too.
+            const HWND hwnd = WindowOfDevice(dev);
+            if (hwnd && hwnd != g_hwnd)
+            {
+                ImGui_ImplWin32_Shutdown();
+                ImGui_ImplWin32_Init(hwnd);
+                WLOG_INFO("imgui: window changed (hwnd=%p -> %p)", g_hwnd, hwnd);
+                g_hwnd = hwnd;
+            }
+            ImGui_ImplDX9_Shutdown();
+            if (!ImGui_ImplDX9_Init(dev))
+            {
+                g_ready = false;
+                g_failed = true;
+                WLOG_WARN("imgui: backend init on the new device failed, overlay disabled");
+                return false;
+            }
+            g_device = dev;
+            WLOG_INFO("imgui: graphics device replaced, overlay moved to the new one");
+            return true;
+        }
         if (g_failed || !dev) return false;
 
         g_hwnd = WindowOfDevice(dev);
@@ -102,6 +129,7 @@ namespace
             return false;
         }
         g_ready = true;
+        g_device = dev;
         WLOG_INFO("imgui: overlay ready (hwnd=%p) -- F9 toggles", g_hwnd);
         return true;
     }

@@ -22,6 +22,7 @@
 #include "game/Pick.hpp"
 
 #include <windows.h>
+#include <d3d9.h>
 
 namespace
 {
@@ -90,6 +91,30 @@ namespace
     }
 
     /**
+     * @brief Follows the device's window. A graphics restart can create a new device on a new window;
+     *        messages then go to that window and would bypass WndProc entirely, so the new one is
+     *        subclassed as soon as its device draws.
+     * @param args  EndSceneArgs of the device that is drawing.
+     */
+    void OnEndScene(void*, const void* args)
+    {
+        static IDirect3DDevice9* lastDevice = nullptr;
+        auto* dev = static_cast<IDirect3DDevice9*>(static_cast<const ev::EndSceneArgs*>(args)->device);
+        if (!dev || dev == lastDevice) return;
+        lastDevice = dev;
+
+        D3DDEVICE_CREATION_PARAMETERS cp{};
+        if (FAILED(dev->GetCreationParameters(&cp)) || !cp.hFocusWindow || cp.hFocusWindow == g_hwnd) return;
+
+        const auto orig = reinterpret_cast<WNDPROC>(
+            SetWindowLongPtrA(cp.hFocusWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&WndProc)));
+        if (!orig) { WLOG_WARN("input: subclassing the new device window failed (%lu)", GetLastError()); return; }
+        WLOG_INFO("input: device window changed (hwnd=%p -> %p), subclassed", g_hwnd, cp.hFocusWindow);
+        g_hwnd = cp.hFocusWindow;
+        g_origWndProc = orig;
+    }
+
+    /**
      * @brief Subclasses the client window and routes its messages through WndProc.
      *
      * A missing window is not fatal: OnInput simply stays inactive, so the installer still reports
@@ -98,6 +123,7 @@ namespace
     bool InstallInput()
     {
         if (g_origWndProc) return true; // already installed
+        ev::Subscribe(ev::Event::OnEndScene, &OnEndScene, nullptr);
         g_hwnd = FindGameWindow();
         if (!g_hwnd) { WLOG_WARN("input: game window not found, OnInput inactive"); return true; }
 
